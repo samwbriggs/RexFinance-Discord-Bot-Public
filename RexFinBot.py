@@ -1,30 +1,95 @@
 # dependencies: all imports + kaleido
-from asyncio.tasks import sleep
 import discord
-from discord import member
-from discord import emoji
-from discord.channel import DMChannel
 from discord.ext import commands
 from discord.ext.commands.errors import CommandInvokeError, CommandNotFound, MissingAnyRole, MissingRequiredArgument, MissingRole, UnexpectedQuoteError
 from requests.api import get
-from discord_components import Button, DiscordComponents
 import yfinance as yf
 import plotly.express as px
+import plotly.graph_objects as go
 import random
 import datetime
-from datetime import date
-from discord.ext import tasks
 import asyncio
+from html2image import Html2Image
 
-# IMPORTANT: the server the bot runs on is 4 hours ahead of EST time and 5 hours ahead of CST time.
+# IMPORTANT: the server the bot runs on is 5 hours ahead of EST time and 6 hours ahead of CST time.
 
-intents = discord.Intents.default()
+intents = discord.Intents.all()
 intents.reactions = True
 
 client = commands.Bot(command_prefix = '$', intents=intents)
 client.remove_command('help')
-DiscordComponents(client)
 
+# TODO: this module spits out annoying error messages?
+hti = Html2Image()
+
+async def check_bell_ring():
+    while True:
+        weekday = datetime.date.today().weekday()
+        current_time = datetime.datetime.now().time()
+        current_time_array = str(current_time).split(':')
+        # 16PM eastern time
+        if int(current_time_array[0]) == 21 and int(current_time_array[1]) == 0o1 and weekday < 5:
+            # cleanspark channel id
+            cleanspark_channel = client.get_channel(738569186430812165)
+            await get_end_of_day_msg('CLSK', cleanspark_channel)
+            # flux channel id
+            flux_channel = client.get_channel(890594561150287922)
+            await get_end_of_day_msg('FLUX', flux_channel)
+            # tesla channel id
+            tesla_channel = client.get_channel(752946856593457273)
+            await get_end_of_day_msg('TSLA', tesla_channel)
+            # shift channel id
+            shift_channel = client.get_channel(814347091455377438)
+            await get_end_of_day_msg('SFT', shift_channel)
+            # palantir channel id
+            palantir_channel = client.get_channel(834546191043002399)
+            await get_end_of_day_msg('PLTR', palantir_channel)
+            # sgblocks channel id
+            sgblocks_channel = client.get_channel(788482090941415424)
+            await get_end_of_day_msg('SGBX', sgblocks_channel)
+            # curiositystream channel id
+            curiositystream_channel = client.get_channel(794716236142870579)
+            await get_end_of_day_msg('CURI', curiositystream_channel)
+            # humbl channel id
+            humbl_channel = client.get_channel(788222389438644234)
+            await get_end_of_day_msg('HMBL', humbl_channel)
+            # li-cycle channel id
+            li_cycle_channel = client.get_channel(862409656429183068)
+            await get_end_of_day_msg('LICY', li_cycle_channel)
+            # one-stop channel id
+            one_stop_channel = client.get_channel(908141514562097243)
+            await get_end_of_day_msg('OSS', one_stop_channel)
+            # wait for an hour to check again
+            await asyncio.sleep(3600)
+        else:
+            # wait for a minute to check again
+            await asyncio.sleep(60)
+
+async def get_end_of_day_msg(ticker, channel):
+    current_price = get_price(ticker)
+    current_price = round(current_price, 4)
+    daily_percentage = get_daily_percent(ticker) * 100
+    # if the percentage is positive, add a plus before the percent to show it
+    if(daily_percentage > 0):
+        daily_percentage_str = '+' + str(round(daily_percentage, 2))
+    else:
+        daily_percentage_str = str(round(daily_percentage, 2))
+    get_graph(ticker, daily_percentage, '1d', False)
+
+    hour_notif = check_hours(True, ticker, daily_percentage)
+    # tell user if after-hours and generate html
+    html_template = generate_html(ticker, current_price, daily_percentage_str, hour_notif)
+
+    size = (1320, 1270)
+    # SO MUCH BETTER :)
+    hti.screenshot(html_str=html_template, save_as='img2.png', size=size)
+
+    # the < and > disables embed preview
+    live_chart_link = '<https://finance.yahoo.com/chart/{ticker}>'.format(ticker=ticker.upper())
+
+    await channel.send(file=discord.File('img2.png'))
+    await channel.send('Interactive Chart: ' + live_chart_link)
+    
 async def easter_egg():
     print('Easter egg sequence activated.')
     # better to use loop than recursion as new thread would be added with recursion
@@ -33,7 +98,7 @@ async def easter_egg():
         current_time = datetime.datetime.now().time()
         current_time_array = str(current_time).split(':')
         # 11AM eastern time
-        if int(current_time_array[0]) == 15:
+        if int(current_time_array[0]) == 16:
             # chit-chat channel id
             channel = client.get_channel(751504980606713891)
             await channel.send('What is my purpose?')
@@ -47,34 +112,15 @@ async def on_ready():
     print('Bot is ready!')
     # TODO: uncomment for addition of new timed tasks
     # loop = asyncio.get_event_loop()
-    # TODO: uncomment for addition of new timed tasks
+    # check_bell_ring_task = loop.create_task(check_bell_ring())
     # easter_egg_task = loop.create_task(easter_egg())
     # weekly_poll_task = loop.create_task(weekly_poll())
-    # TODO: when adding weekly poll, add to the wait task below.
-    # await asyncio.wait([])
-
-# TODO: expand on this (send message to channel)
-@client.event
-async def on_member_remove(member):
-    print(f'{member} is gone!')
-
-@client.event
-async def on_member_join(member):
-    # welcome channel id
-    channel = client.get_channel(738557213471408228)
-    await channel.send(f'Welcome {member} to the RexFinance Discord! Please review the #rules and reach out to a Moderator if you have questions!')
+    # await asyncio.wait([check_bell_ring_task])
 
 # begin commands
 @client.command()
 async def hello(context):
     await context.send('Hello there!')
-
-@client.command()
-async def donate(context):
-    await context.send('I am working on this bot in my own spare time unpaid. I am happy to work for free, ' 
-    'however I would more than welcome a generous donation from you! Simply click the button below to donate using Venmo or PayPal.\n\n'
-    'Thanks for being a part of RexNation - *Rex\'s Twin*', components=[[Button(label='Donate Using Venmo', style=5, url='https://venmo.com/u/samwbriggs'),\
-    Button(label='Donate Using Paypal', style=5, url='https://paypal.me/samwbriggs?country.x=US&locale.x=en_US')]])
 
 @client.command()
 async def motivation(context):
@@ -96,37 +142,90 @@ async def motivation(context):
     await context.send(f'{context.author.mention}, ' + random.choice(quotes))
 
 @client.command()
-async def search(context, ticker):
+async def search(context, ticker, time_frame = '1D'):
     current_price = get_price(ticker)
+    current_price = round(current_price, 4)
     daily_percentage = get_daily_percent(ticker) * 100
     # if the percentage is positive, add a plus before the percent to show it
     if(daily_percentage > 0):
         daily_percentage_str = '+' + str(round(daily_percentage, 2))
     else:
         daily_percentage_str = str(round(daily_percentage, 2))
-    get_graph(ticker, daily_percentage)
+    get_graph(ticker, daily_percentage, time_frame.upper(), False)
 
-    # tell user if after-hours
-    weekday = datetime.date.today().weekday()
-    current_time = datetime.datetime.now().time()
-    current_time_array = str(current_time).split(':')
-    if weekday < 5:
-        if((int(current_time_array[0]) >= 21 and int(current_time_array[0]) <= 23)) or int(current_time_array[0] == 1) or int(current_time_array[0] == 0):
-            await context.send('The current price of **' + ticker.upper() + '** is: **{}'.format(round(current_price, 4)) + ' (' + daily_percentage_str + ')**\n It is currently after-hours. *Prices may move slightly during this time.*', file = discord.File("Images/img1.png"))
-        elif(int(current_time_array[0]) > 9 and (int(current_time_array[0]) < 14 and int(current_time_array[1]) < 30)):
-            await context.send('The current price of **' + ticker.upper() + '** is: **{}'.format(round(current_price, 4)) + ' (' + daily_percentage_str + ')**\n It is currently pre-market trading hours. *Prices may move slightly during this time.*', file = discord.File("Images/img1.png"))
-        else:
-            await context.send('The current price of **' + ticker.upper() + '** is: **{}'.format(round(current_price, 4)) + ' (' + daily_percentage_str + ')**\n', file = discord.File("Images/img1.png"))
+    if time_frame.upper() == '3M' or time_frame.upper() == '1Y' or time_frame.upper() == '5Y':
+        # the price (and percentage) change will still be displayed as the daily change.
+        hour_notif = 'You are currently viewing the <strong>' + time_frame.upper() + '</strong> chart. <strong>The price above still reflects the daily change.</strong>'
     else:
-        # it's the weekend!
-        await context.send('The current price of **' + ticker.upper() + '** is: **{}'.format(round(current_price, 4)) + ' (' + daily_percentage_str + ')**\n It is currently the weekend!🥳 *Most prices will not move until market open on Monday morning.*', file = discord.File("Images/img1.png"))
+        hour_notif = check_hours(False, ticker, daily_percentage)
+    
+    # tell user if after-hours and generate html
+    html_template = generate_html(ticker, current_price, daily_percentage_str, hour_notif)
+
+    # if the hour notification is blank, shrink the screenshot size.
+    if not hour_notif:
+        size = (1320, 1170)
+    else:
+        size = (1320, 1320)
+    # SO MUCH BETTER :)
+    hti.screenshot(html_str=html_template, save_as='img2.png', size=size)
+
+    # the < and > disables embed preview
+    live_chart_link = '<https://finance.yahoo.com/chart/{ticker}>'.format(ticker=ticker.upper())
+
+    await context.send(file=discord.File('img2.png'))
+    await context.send('Interactive Chart: ' + live_chart_link)
+
+@client.command()
+async def candle(context, ticker, time_frame = '1D'):
+    # check to see if crypto.. candles don't play nice with them in yFinance at this time!
+    if '-' in ticker.upper():
+        await context.send('Cryptocurrency has not yet been optimized for candle charts! Try using **$search** instead.')
+        return
+
+    current_price = get_price(ticker)
+    current_price = round(current_price, 4)
+    daily_percentage = get_daily_percent(ticker) * 100
+    # if the percentage is positive, add a plus before the percent to show it
+    if(daily_percentage > 0):
+        daily_percentage_str = '+' + str(round(daily_percentage, 2))
+    else:
+        daily_percentage_str = str(round(daily_percentage, 2))
+    get_graph(ticker, daily_percentage, time_frame.upper(), True)
+
+    # currently the only two options for daily charts
+    if time_frame.upper() == '1D' or time_frame.upper() == '1H' or time_frame.upper() == '3M' or time_frame.upper() == '1Y' or time_frame.upper() == '5Y':
+        hour_notif = check_hours(False, ticker, daily_percentage)
+    else:
+        await context.send('Invalid time frame specified.')
+        return
+
+    # as of this time the price (and percentage) change will still be displayed as the daily change regardless of time frame.
+    if not time_frame.upper() == '1D':
+        hour_notif += '\n\nYou are currently viewing the <strong>' + time_frame.upper() + '</strong> chart. <strong>The price above still reflects the daily change.</strong>'
+
+    # tell user if after-hours and generate html
+    html_template = generate_html(ticker, current_price, daily_percentage_str, hour_notif)
+
+    # if the hour notification is blank, shrink the screenshot size.
+    if not hour_notif:
+        size = (1320, 1170)
+    else:
+        size = (1320, 1320)
+    # SO MUCH BETTER :)
+    hti.screenshot(html_str=html_template, save_as='img2.png', size=size)
+
+    # the < and > disables embed preview
+    live_chart_link = '<https://finance.yahoo.com/chart/{ticker}>'.format(ticker=ticker.upper())
+
+    await context.send(file=discord.File('img2.png'))
+    await context.send('Interactive Chart: ' + live_chart_link)
 
 @client.command()
 @commands.has_any_role('Administrator', 'Moderator')
 async def clear(context, n = 2):
     await context.channel.purge(limit = n)
 
-# TODO (Improvement?): private message the caller instead of having them type everything on one line.
 # TODO: only one poll can exist IN ANY server at a time. Should this be changed?
 @client.command()
 @commands.max_concurrency(1, per = commands.BucketType.default, wait = False)
@@ -134,7 +233,7 @@ async def poll(context, question, option_list, time = '1'):
     # delete message to create poll
     await context.message.delete()
 
-    # option_list is taken in as a string, but tokenized by a ','
+    #option_list is taken in as a string, but tokenized by a ','
     if not option_list:
         await context.send('Options required.')
         return
@@ -155,11 +254,7 @@ async def poll(context, question, option_list, time = '1'):
     if int(time) <= 0:
         await context.send('You cannot host a poll for less than 1 hour!')
         return
-    current_time = datetime.datetime.now().time()
-    current_time_array = str(current_time).split(':')
-    if (int(current_time_array[0]) + int(time) >= 29 or (int(current_time_array[0]) + int(time) >= 5 and int(current_time_array[0]) < 5)):
-        await context.send('Due to the bot restarting at midnight, your poll cannot be created. Either wait until then, or lower your time-frame.')
-        return
+
     options = option_list.split(',')
     if len(options) < 2:
         await context.send('Too few options were given.')
@@ -199,9 +294,9 @@ async def poll(context, question, option_list, time = '1'):
     sleep_task = asyncio.ensure_future(poll_sleep(time_in_seconds))
     sleep_task.set_name('sleep_task')
     # boolean to see if task was cancelled
-    sleep_task_cancelled = await sleep_task
+    sleep_task_completed = await sleep_task
 
-    if sleep_task_cancelled == False:
+    if sleep_task_completed == False:
         await poll.delete()
         await context.send('The existing poll was cancelled!')
         return
@@ -269,7 +364,7 @@ async def pollcancel(context):
 async def help(context):
     em = discord.Embed(title = 'Help', description = 'To get more details about a command, type **$help [command]**.')
 
-    em.add_field(name = 'Commands:', value = '$help\n $donate\n $hello\n $search\n $clear\n $poll\n $pollcancel\n')
+    em.add_field(name = 'Commands:', value = '$hello\n $search\n $candle\n $clear\n $poll\n $pollcancel\n')
     em.add_field(name = 'Temporary:', value = 'No current temporary commands!\nThese usually appear with holiday updates.')
     await context.send(embed = em)
 
@@ -281,17 +376,17 @@ async def hello(context):
     await context.send(embed = em)
 
 @help.command()
-async def donate(context):
-    em = discord.Embed(title = 'Donate', description = 'An easy way to support my work is by giving a generous donation! Currently accepting Venmo.')
+async def search(context):
+    em = discord.Embed(title = 'Search', description = 'Give the bot a ticker symbol, and it will output a graph of the current price as well as a link to an interactive stock chart.')
 
-    em.add_field(name = 'Syntax: ', value = '$donate')
+    em.add_field(name = 'Syntax: ', value = '$search [ticker] [timeframe]')
     await context.send(embed = em)
 
 @help.command()
-async def search(context):
-    em = discord.Embed(title = 'Search', description = 'Give the bot a ticker symbol, and it will find the latest up-to-date price in the stock-market!')
+async def candle(context):
+    em = discord.Embed(title = 'Candle', description = 'Give the bot a ticker symbol, and it will output a candle chart of the current price as well as a link to an interactive stock chart.')
 
-    em.add_field(name = 'Syntax: ', value = '$search [ticker]')
+    em.add_field(name = 'Syntax: ', value = '$candle [ticker] [timeframe]')
     await context.send(embed = em)
 
 @help.command()
@@ -349,37 +444,165 @@ def get_price(symbol):
 
 def get_daily_percent(symbol):
     ticker = yf.Ticker(symbol)
-    previous_close = ticker.history(period='2d')
+    previous_close = ticker.history(period='2d')['Close'][0]
     current_close = get_price(symbol)
-    return ((current_close/previous_close) - 1)['Close'][0]
+    return ((current_close/previous_close) - 1)
 
-# return a line chart of a stock of a period of one day!
-def get_graph(ticker, daily_percentage):
-    data = yf.download(tickers = ticker, period = '1d', interval = '1m')
-    figure = px.line(x = data.index, y = data.Close, labels = {'x':'', 'y':''})
-    # Decide what color the line should be based off of negative or positive
-    if(daily_percentage > 0):
-        # normal green
-        figure.update_traces(line_color = '#1CE912')
-        figure.update_layout({'title_font_color': '#FF8700'})
+# return a line chart of a stock of a given period!
+def get_graph(ticker, daily_percentage, time_frame, is_candle):
+    # introduce time-frames
+    if time_frame == '1H':
+        data = yf.download(tickers = ticker, period = '1d', interval = '1m')
+        data = data[-61:]
+    elif time_frame == '3M':
+        data = yf.download(tickers = ticker, period = '3mo', interval = '1d')
+    elif time_frame == '1Y':
+        data = yf.download(tickers = ticker, period = '1y', interval = '1d')
+    elif time_frame == '5Y':
+        data = yf.download(tickers = ticker, period = '5y', interval = '1d')
     else:
-        # normal red
-        figure.update_traces(line_color = '#E91212')
-        figure.update_layout({'title_font_color': '#7C00FF'})
+        data = yf.download(tickers = ticker, period = '1d', interval = '1m')
+
+    # check if candle chart was requested
+    if(is_candle == False):
+        figure = px.line(x = data.index, y = data.Close, labels = {'x':'', 'y':''})
+        
+        # Decide what color the line should be based off of negative or positive
+        if(daily_percentage > 0):
+            # normal green
+            figure.update_traces(line_color = '#1CE912')
+            figure.update_layout({
+                    'title_font_color': '#FF8700',
+                    'margin': {
+                            'l': 0,
+                            'r': 30,
+                            'b': 0,
+                            't': 30
+                    },
+                })
+        else:
+            # normal red
+            figure.update_traces(line_color = '#E91212')
+            figure.update_layout({
+                    'title_font_color': '#7C00FF',
+                    'margin': {
+                        'l': 0,
+                        'r': 30,
+                        'b': 0,
+                        't': 30
+                    },
+                })
+    else:
+        figure = go.Figure(data=[go.Candlestick(x=data.index,
+                open=data["Open"],
+                high=data["High"],
+                low=data["Low"],
+                close=data["Close"])])
+        
+        figure.update_layout({
+                'xaxis_rangeslider_visible': False,
+                'margin': {
+                    'l': 50,
+                    'r': 30,
+                    'b': 40,
+                    't': 30
+                },
+            })
 
     figure.update_layout({
         'plot_bgcolor': 'rgba(25, 25, 25, 0)',
         'paper_bgcolor': 'rgba(25, 25, 25, 1)',
         'xaxis_color': 'rgba(220, 221, 222, 1)',
         'yaxis_color': 'rgba(220, 221, 222, 1)',
+        'yaxis_gridcolor': 'rgba(220, 221, 222, 0.3)',
+        'xaxis_gridcolor': 'rgba(220, 221, 222, 0.3)',
     })
     
-    figure.write_image("Images/img1.png", scale = 2)
+    figure.write_image("img1.png", scale = 2)
     
     # MacOS: /Users/sambriggs/Documents/DiscordBot/Images/img1.png
     # PC: C:\DiscordBot\Images\img1.png
     # PebbleHost: Images/img1.png
     return
+
+def check_hours(is_end_of_day_msg, ticker, daily_percentage):
+    if is_end_of_day_msg:
+        if (daily_percentage > 0):
+            hour_notif = 'Finished <strong>green</strong> today.'
+            return hour_notif
+        else:
+            hour_notif = 'Finished <strong>red</strong> today.'
+            return hour_notif
+
+    weekday = datetime.date.today().weekday()
+    current_time = datetime.datetime.now().time()
+    current_time_array = str(current_time).split(':')
+    hour_notif = ''
+    if weekday < 5:
+        if((int(current_time_array[0]) >= 22 and int(current_time_array[0]) <= 24)) or int(current_time_array[0] == 2) or int(current_time_array[0] == 1):
+            hour_notif = 'It is currently after-hours. <strong>Prices may move slightly during this time.</strong>'
+        elif(int(current_time_array[0]) > 10 and (int(current_time_array[0]) < 15 and int(current_time_array[1]) < 30)):
+            hour_notif = 'It is currently pre-market trading hours. <strong>Prices may move slightly during this time.</strong>'
+    else:
+        # it's the weekend!
+        hour_notif = 'It is currently the weekend! <strong>Most prices will not move until market open on Monday morning.</strong>'
+
+    return hour_notif
+
+def generate_html(ticker, current_price, daily_percentage_str, hour_notif):
+    discord_role_colors = ['#00C09A','#00D166', '#0099E1', '#A652BB', '#FD0061', '#F8C300', '#F93A2F', '#91A6A6', '#597E8D']
+    rand_discord_role_color = random.choice(discord_role_colors)
+
+    # get html to img representation
+    html_template = """<!DOCTYPE html>
+        <html>
+        <head>
+            <link rel="preconnect" href="https://fonts.googleapis.com"> 
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin> 
+            <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@700&display=swap" rel="stylesheet">
+
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+            <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+        </head>
+        <body>
+            <h1>{ticker}</h1>
+            <p><strong>${current_price} ({daily_percentage_str})</strong></p>
+            <p>{hour_notif}</p>
+            <img id="graph-image" src="C:/Users/Sam/Documents/GitHub/RexFinance-Discord-Bot/img1.png" alt="Stock Graph">
+        </body>
+        </html>
+
+        <style>
+            body {{
+                zoom: 3;
+                background-color: {rand_discord_role_color};
+                margin: 20px;
+            }}
+
+            h1 {{
+                font-family: 'Roboto', sans-serif;
+                color: white;
+                margin: 0;
+                padding: 0;
+            }}
+
+            p {{
+                font-family: 'Montserrat', sans-serif;
+                color: white;
+                margin: 0;
+                margin-bottom: 10px;
+                padding: 0;
+            }}
+
+            #graph-image {{
+                width: 400px;
+                border-radius: 16px;
+                box-shadow: rgba(0, 0, 0, 0.35) 0px 5px 15px;
+            }}
+        </style>""".format(ticker=ticker.upper(), current_price=current_price, daily_percentage_str=daily_percentage_str, rand_discord_role_color=rand_discord_role_color, hour_notif=hour_notif)
+
+    return html_template
 
 client.run('<SuperSecretKey>')
 # Main: <SuperSecretKey>
