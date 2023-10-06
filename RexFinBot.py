@@ -76,12 +76,12 @@ async def get_end_of_day_msg(ticker, channel):
         daily_percentage_str = str(round(daily_percentage, 2))
     get_graph(ticker, daily_percentage, '1d', False)
 
-    hour_notif = check_hours(True, ticker, daily_percentage)
-    # tell user if after-hours and generate html
+    hour_notif = check_hours(True, daily_percentage)
+
     html_template = generate_html(ticker, current_price, daily_percentage_str, hour_notif)
 
     size = (1320, 1270)
-    # SO MUCH BETTER :)
+    
     hti.screenshot(html_str=html_template, save_as='img2.png', size=size)
 
     # the < and > disables embed preview
@@ -153,13 +153,12 @@ async def search(context, ticker, time_frame = '1D'):
         daily_percentage_str = str(round(daily_percentage, 2))
     get_graph(ticker, daily_percentage, time_frame.upper(), False)
 
-    if time_frame.upper() == '3M' or time_frame.upper() == '1Y' or time_frame.upper() == '5Y':
+    if time_frame.upper() != '1D':
         # the price (and percentage) change will still be displayed as the daily change.
         hour_notif = 'You are currently viewing the <strong>' + time_frame.upper() + '</strong> chart. <strong>The price above still reflects the daily change.</strong>'
     else:
-        hour_notif = check_hours(False, ticker, daily_percentage)
+        hour_notif = check_hours(False, daily_percentage)
     
-    # tell user if after-hours and generate html
     html_template = generate_html(ticker, current_price, daily_percentage_str, hour_notif)
 
     # if the hour notification is blank, shrink the screenshot size.
@@ -167,7 +166,7 @@ async def search(context, ticker, time_frame = '1D'):
         size = (1320, 1170)
     else:
         size = (1320, 1320)
-    # SO MUCH BETTER :)
+    
     hti.screenshot(html_str=html_template, save_as='img2.png', size=size)
 
     # the < and > disables embed preview
@@ -193,18 +192,12 @@ async def candle(context, ticker, time_frame = '1D'):
         daily_percentage_str = str(round(daily_percentage, 2))
     get_graph(ticker, daily_percentage, time_frame.upper(), True)
 
-    # currently the only two options for daily charts
-    if time_frame.upper() == '1D' or time_frame.upper() == '1H' or time_frame.upper() == '3M' or time_frame.upper() == '1Y' or time_frame.upper() == '5Y':
-        hour_notif = check_hours(False, ticker, daily_percentage)
+    if time_frame.upper() != '1D':
+        # the price (and percentage) change will still be displayed as the daily change.
+        hour_notif = 'You are currently viewing the <strong>' + time_frame.upper() + '</strong> chart. <strong>The price above still reflects the daily change.</strong>'
     else:
-        await context.send('Invalid time frame specified.')
-        return
+        hour_notif = check_hours(False, daily_percentage)
 
-    # as of this time the price (and percentage) change will still be displayed as the daily change regardless of time frame.
-    if not time_frame.upper() == '1D':
-        hour_notif += '\n\nYou are currently viewing the <strong>' + time_frame.upper() + '</strong> chart. <strong>The price above still reflects the daily change.</strong>'
-
-    # tell user if after-hours and generate html
     html_template = generate_html(ticker, current_price, daily_percentage_str, hour_notif)
 
     # if the hour notification is blank, shrink the screenshot size.
@@ -212,7 +205,7 @@ async def candle(context, ticker, time_frame = '1D'):
         size = (1320, 1170)
     else:
         size = (1320, 1320)
-    # SO MUCH BETTER :)
+    
     hti.screenshot(html_str=html_template, save_as='img2.png', size=size)
 
     # the < and > disables embed preview
@@ -233,17 +226,16 @@ async def poll(context, question, option_list, time = '1'):
     # delete message to create poll
     await context.message.delete()
 
-    #option_list is taken in as a string, but tokenized by a ','
+    # option_list is taken in as a string, but tokenized by a ','
     if not option_list:
         await context.send('Options required.')
         return
 
+    is_number = True
     for char in time:
-        if char.isdigit():
-            is_number = True
-        else:
+        if char.isdigit() == False:
             is_number = False
-            break
+            break    
     
     if is_number == False:
         await context.send('You cannot use alpha-numeric characters when specifying time-frame.')
@@ -304,8 +296,6 @@ async def poll(context, question, option_list, time = '1'):
     update_message_cache = discord.utils.get(client.cached_messages, id=poll_id)
     reactions = update_message_cache.reactions
     total_reaction_count = 0
-    reaction_percentages = []
-    reaction_counts = []
     for reaction in reactions:
         if reaction.emoji != '1️⃣' and reaction.emoji != '2️⃣' and reaction.emoji != '3️⃣' and reaction.emoji != '4️⃣':
             # remove any reaction that isn't one for options
@@ -321,6 +311,8 @@ async def poll(context, question, option_list, time = '1'):
         return
     else:
         # convert reactions to percentages
+        reaction_percentages = []
+        reaction_counts = []
         for reaction in reactions:
             percentage = round((reaction.count - 1)/total_reaction_count * 100)
             reaction_percentages.append(percentage)
@@ -464,35 +456,7 @@ def get_graph(ticker, daily_percentage, time_frame, is_candle):
         data = yf.download(tickers = ticker, period = '1d', interval = '1m')
 
     # check if candle chart was requested
-    if(is_candle == False):
-        figure = px.line(x = data.index, y = data.Close, labels = {'x':'', 'y':''})
-        
-        # Decide what color the line should be based off of negative or positive
-        if(daily_percentage > 0):
-            # normal green
-            figure.update_traces(line_color = '#1CE912')
-            figure.update_layout({
-                    'title_font_color': '#FF8700',
-                    'margin': {
-                            'l': 0,
-                            'r': 30,
-                            'b': 0,
-                            't': 30
-                    },
-                })
-        else:
-            # normal red
-            figure.update_traces(line_color = '#E91212')
-            figure.update_layout({
-                    'title_font_color': '#7C00FF',
-                    'margin': {
-                        'l': 0,
-                        'r': 30,
-                        'b': 0,
-                        't': 30
-                    },
-                })
-    else:
+    if(is_candle):
         figure = go.Figure(data=[go.Candlestick(x=data.index,
                 open=data["Open"],
                 high=data["High"],
@@ -508,6 +472,25 @@ def get_graph(ticker, daily_percentage, time_frame, is_candle):
                     't': 30
                 },
             })
+    else:
+        figure = px.line(x = data.index, y = data.Close, labels = {'x':'', 'y':''})
+        
+        # Decide what color the line should be based off of negative or positive
+        if(daily_percentage >= 0):
+            # normal green
+            figure.update_traces(line_color = '#1CE912')
+        else:
+            # normal red
+            figure.update_traces(line_color = '#E91212')
+
+        figure.update_layout({
+                    'margin': {
+                        'l': 0,
+                        'r': 30,
+                        'b': 0,
+                        't': 30
+                    },
+                })
 
     figure.update_layout({
         'plot_bgcolor': 'rgba(25, 25, 25, 0)',
@@ -525,7 +508,7 @@ def get_graph(ticker, daily_percentage, time_frame, is_candle):
     # PebbleHost: Images/img1.png
     return
 
-def check_hours(is_end_of_day_msg, ticker, daily_percentage):
+def check_hours(is_end_of_day_msg, daily_percentage):
     if is_end_of_day_msg:
         if (daily_percentage > 0):
             hour_notif = 'Finished <strong>green</strong> today.'
